@@ -24,6 +24,9 @@
 // -- This is will overwrite an existing command --
 // Cypress.Commands.overwrite("visit", (originalFn, url, options) => { ... })
 
+import Navigation from '../utils/navigation'
+const nav = new Navigation();
+
 Cypress.Commands.add("login", () => {
 	cy.request({
 		url: "/auth/login",
@@ -31,8 +34,61 @@ Cypress.Commands.add("login", () => {
 		form: true,
 		followRedirect: false,
 		body: {
-			username: "",
-			password: "",
+			username: "techx",
+			password: "ATreeGrowsSlowly531",
+		},
+	});
+
+	cy.request({
+		url: "/auth/eula",
+		method: "POST",
+		form: true,
+		followRedirect: false,
+		body: {
+			i_agree: "1",
+		},
+	});
+
+	//global set api config for cypress tests
+	cy.request({
+		method: "PATCH",
+		url: "/api/config/JSON%20API%20Token",
+		dataType: "json",
+		body: {
+			value: "cypress_api_hack",
+		},
+	});
+
+	//Don't kill pid in root for exception error handler
+	cy.request({
+		method: "PATCH",
+		url: "/api/config/Do%20Not%20Die%20On%20Errors",
+		dataType: "json",
+		body: {
+			value: 1,
+		},
+	});
+	//Don't kill pid in root for exception error handler
+	cy.request({
+		method: "PATCH",
+		url: "/api/config/Do%20Not%20Email%20On%20Errors",
+		dataType: "json",
+		body: {
+			value: 1,
+		},
+	});
+	return;
+});
+
+Cypress.Commands.add("sales_login", () => {
+	cy.request({
+		url: "/auth/login",
+		method: "POST",
+		form: true,
+		followRedirect: false,
+		body: {
+			username: "Sales Guy",
+			password: "password",
 		},
 	});
 
@@ -48,7 +104,6 @@ Cypress.Commands.add("login", () => {
 
 	return;
 });
-
 Cypress.Commands.add("warehouse_login", () => {
 	cy.request({
 		url: "/auth/login",
@@ -74,6 +129,9 @@ Cypress.Commands.add("warehouse_login", () => {
 	return;
 });
 
+Cypress.Commands.add('logout', (el) => {
+	cy.visit('/auth/logout')
+});
 Cypress.Commands.add('exists', (el) => {
 	cy.get('body').then($body => {
 		var value;
@@ -84,6 +142,18 @@ Cypress.Commands.add('exists', (el) => {
 		}
 		return cy.wrap(value)
 	})
+});
+
+Cypress.Commands.add('grid_empty',(array1, array2) => {
+	var value;
+	cy.get('.web_grid_pager').first().then(display => {
+		value = 0;
+		if(display.text().includes('Displaying 0 - 0 of 0')){
+			value = 1;
+		}
+	}).then(() => {
+		return cy.wrap(value, array1, array2);
+	});
 });
 
 Cypress.Commands.add('text_exists', (el, text) => {
@@ -122,17 +192,18 @@ Cypress.Commands.add("add_bill_to_lines", (length, count) => {
 });
 
 
+
 Cypress.Commands.add("creates_user", (users) => {
-	var user_password = { password: "password" };
-	for (let user of users) {
-		var username = user.username;
-		var password = user_password.password;
-		var role = user.role;
+	var password = "password";
+	cy.wrap(users).each(user => {
+
 		cy.visit("/user/list");
 		cy.get("table > tbody > tr > td > #create_user_button").click();
-		cy.get('#create_user_form > div > input[name="username"]')
-			.type(username)
-			.should("have.value", `${username}`);
+		cy.wrap(user).its('username').then(username => {
+			cy.get('#create_user_form > div > input[name="username"]')
+				.type(username)
+				.should("have.value", `${username}`);
+		});
 		cy.get('#create_user_form > div > input[name="password"]')
 			.type(password)
 			.should("have.value", `${password}`);
@@ -145,18 +216,19 @@ Cypress.Commands.add("creates_user", (users) => {
 				.invoke("text")
 				.then(($text) => {
 					if (!$text) {
-						cy.contains("select", `${role}`).select(`${role}`);
-						cy.get(
-							".box > #generic_container > .form > .form-field > .button2"
-						).click();
+						cy.wrap(user).its('role').then(role => {
+							cy.get('#role').select([`${role}`]);
+							nav.get('body', '.button2', 'Submit')
+						});
 					}
 					if ($text.includes("User already exists!")) {
 						cy.get("#cboxClose").click();
 					}
-				});
+			});
 		});
-	}
+	});
 });
+
 
 
 Cypress.Commands.add('get_quote_po_or_order_num', (name, url, warehouse_flag) => {
@@ -205,3 +277,36 @@ Cypress.Commands.add('log_ids', function(el, el2){
 	console.log(array)
 });
 
+// Performs an XMLHttpRequest instead of a cy.request (able to send data as FormData - multipart/form-data)
+Cypress.Commands.add('form_request', (method, url, formData, done) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, url);
+    xhr.onload = function () {
+        done(xhr);
+    };
+    xhr.onerror = function () {
+        done(xhr);
+    };
+    xhr.send(formData);
+});
+
+Cypress.Commands.add('handle_exception', () => {
+	return cy.wrap(Cypress.on('uncaught:exception', (err, runnable) => {
+	// was getting errors on the labor plan page, so added this.
+	// returning false here prevents Cypress from
+	// failing the test
+	return false
+  }));
+});
+
+Cypress.Commands.add('check_bin', (warehouse, bin, qty, cost) => {
+	cy.get(`[data-cy=${warehouse}]`).find(`[data-cy=${bin}-data]`).then(row => {
+		if(cost){
+			cy.get("input[id*='bin_cost_']").should('have.value', cost)
+		}
+		if(qty){
+			cy.get("input[id*=bin_qty_]").should('have.value', qty)
+		}
+		return cy.wrap(row)
+	});
+});

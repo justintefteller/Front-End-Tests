@@ -3,8 +3,8 @@ import Navigation from "./navigation"
 var nav = new Navigation();
 
 class Assertion {
-    constructor(){
-        this.assert_row = (el, desc, assertions=[]) => {
+
+        assert_row = (el, desc, assertions=[]) => {
             if(!desc) return;
             if(!assertions) return;
         
@@ -21,7 +21,7 @@ class Assertion {
             });
         };
 
-        this.assert_tfoot_row = (el, desc, assertions=[]) => {
+        assert_tfoot_row = (el, desc, assertions=[]) => {
             if(!desc) return;
             if(!assertions) return;
         
@@ -38,7 +38,7 @@ class Assertion {
             });
         };
 
-        this.success = (message) => {
+        success = (message) => {
             if(message){
                 return cy.get('.status_message').should("contain", "Success").and("contain", `${message}`)
             }else{
@@ -46,7 +46,7 @@ class Assertion {
             }
         };
 
-        this.check_global_ledger = (id, type, amounts=[] , rows) => {
+        check_global_ledger = (id, type, amounts=[] , rows) => {
             if(!id || !type || !amounts){
                 cy.log({
                     message: 'Need to add id, type, or amounts to check_global_ledger'
@@ -70,7 +70,7 @@ class Assertion {
             });
         };
         
-        this.check_object_ledger = (amount) => {
+        check_object_ledger = (amount) => {
             //only for when you are inside the object
             //something like creditmemo/1/edit
             //it does the looks ups for you and uses the side menu to get there.
@@ -92,16 +92,28 @@ class Assertion {
                 }
             });
         };
-        this.exists = (el) => {
+
+        exists = (el) => {
             //inside the commands.js
             return cy.exists(el)
         }
-        this.text_exists = (el, text) => {
+
+        text_exists = (el, text) => {
             //inside the commands.js
             return cy.text_exists(el, text)
         }
 
-    }
+        web_grid = (gridId, rows, rowContent) => {
+            cy.get(`${gridId} > tbody`).within(() => {
+                cy.wrap(rows).each((row,idx) => {
+                    cy.get(row).then(tr => {
+                        cy.wrap(Object.keys(rowContent[idx])).each((selector) => {
+                            cy.wrap(tr).find(selector).should('contain', rowContent[idx][selector]);
+                        });
+                    });
+                })
+            });
+        }
 }
 
 export default Assertion;

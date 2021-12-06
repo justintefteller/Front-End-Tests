@@ -1,4 +1,15 @@
 class Navigation {
+    main_menu = (category, subNav, item ) => {
+        if(category){
+            cy.get('#main_nav').find('li').contains(category).click();
+            if(subNav){
+                cy.get('.sub-nav:visible > .container').find('a').contains(subNav).click();
+                if(item){
+                    cy.get('.subnav:visible').find('a').contains(item).click();
+                }
+            }
+        }
+    }
 
     side_menu = (nameOfLink) => {
         return cy.get(".vertical_nav_notab").find("a").contains(`${nameOfLink}`).click();
@@ -20,13 +31,9 @@ class Navigation {
     };
 
     get_dropdown = (desc) =>  {
-        return cy.get(".ui-menu-item-wrapper", {
-            timeout: 10000,
-        })
-            .contains(`${desc}`)
-            .click();
+        //hopefully the should will retry until if finds the dropdown 
+        return cy.get(".ui-menu-item-wrapper", {timeout: 10000}).should('contain', `${desc}`).click()
     };
-
 
 
     do_inputs = (selects='', inputs='', textarea='') => {
@@ -42,6 +49,18 @@ class Navigation {
                 }
             });
         });
+    }
+    //not entirely sure this works...
+    set_web_grid_controls = (table) => {
+        cy.get('.kinda_show_grid_control').click()
+        cy.get(`#web_grid_control_${table}_table`).within($control => {
+            cy.get("input[type='radio']").each((box, i) => {
+                if(i == 0 || i % 2 == 0){
+                    cy.get(box).click()
+                }
+            });
+        });               
+        cy.get('#cboxClose').click();
     }
 
 }

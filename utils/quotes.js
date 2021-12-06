@@ -62,7 +62,7 @@ class Quotes {
             return false
         }
         cy.server()
-        cy.route('GET', '/quote/*/get_totals').as('getTotal')
+        // cy.route('GET', '/quote/*/get_totals').as('getTotal')
         cy.route('GET', '/inv/search*').as('invSearch')
         //sometimes the resale isn't visible
         cy.get('.kinda_show_grid_control').click()
@@ -71,20 +71,22 @@ class Quotes {
         cy.wait(1000)
         cy.get('#quick_prcpart:visible').type(prcpart)
         cy.get('#promise_date_1').type(today)
-        cy.wait('@invSearch').its('status').should('be', 200)
+        cy.wait('@invSearch').its('status').should('eq', 200)
         cy.get('#qty_1').clear().type(qty)
-        cy.wait('@invSearch').its('status').should('be', 200)
+        cy.get('#qty_1').focus().clear().type(qty).blur()
+        cy.wait('@invSearch').its('status').should('eq', 200)
         if(cost){
             cy.get('#cost_1').scrollIntoView().then($cost => {
                 cy.wrap($cost).wait(2000).clear().type(' ')
                 cy.wrap($cost).wait(2000).clear().type(cost)
             });
-            cy.wait('@invSearch').its('status').should('be', 200)
+            cy.wait('@invSearch').its('status').should('eq', 200)
         }
         if(resale){
-            cy.get('#resale_1').scrollIntoView().clear().type(resale)
+            cy.get('#resale_1').scrollIntoView().clear({force:true}).type(resale, {force: true})
             cy.get('#add_newline').click()
-            cy.wait('@getTotal').its('status').should('be', 200)
+            cy.wait(5000)
+            // cy.wait('@getTotal').its('status').should('eq', 200)
         }
         cy.get('#promise_date_1').should('have.value', `${today}`)
         cy.get('#due_date_1').should('have.value', `${today}`)
@@ -166,13 +168,16 @@ class Quotes {
 
     //This one is the fastest just the most limited and complicated 
     //only use if you don't need to test the order but need an order to proceed.
-    create_order_with_api = (token, external_key, prcpart, transcode, date1, date2) => {
+    create_order_with_api = (token, external_key, prcpart, transcode, date1, date2, resale, cost, qty) => {
         if(!token) return false;
         if(!external_key) return false;
         if(!prcpart) return false;
         if(!transcode) {transcode = "SA"};
         if(!date1){date1 = today}
         if(!date2){date2 = future}
+        if(!resale){resale = '100'}
+        if(!cost){cost = '50'}
+        if(!qty){qty = '10'}
         var info = gen.info(10)
         return cy.request({
             method: 'POST',
@@ -201,17 +206,17 @@ class Quotes {
                 "billto_zip": "78704",
                 "ship_via": 1,
                 "lines": [{
-                  "partnum": prcpart,
-                  "transcode": transcode, //build
-                  "custpart": "",
-                  "resale": "100",
-                  "cost": "50",
-                  "qty": "10",
-                //   "revision": "Test",
-                  "comments": "API Magic",
-                  "due_date": date2,
-                  "ship_date": date2,
-                  "wip_date": date1 
+                    "partnum": prcpart,
+                    "transcode": transcode, //build
+                    "custpart": "",
+                    "resale": resale,
+                    "cost": cost,
+                    "qty": qty,
+                    //   "revision": "Test",
+                    "comments": "API Magic",
+                    "due_date": date2,
+                    "ship_date": date2,
+                    "wip_date": date1 
               }],
             }
         });
@@ -220,36 +225,38 @@ class Quotes {
     //you can add as many prcparts/lines as you want for this quote/order
     //this is the slowest
     //multiline
-    new_order = (lines, drop_ship) => {
+    new_order = (lines, drop_ship, build_or_buy, internal) => {
+        Cypress.config('pageLoadTimeout', 120000)
         cy.server();
         cy.route("GET", "/inv/search*").as("invSearch");
-        cy.route("GET", "/quote/*/get_totals").as("getTotal");
+        // cy.route("GET", "/quote/*/get_totals").as("getTotal");
+        cy.route("POST", "/quote/*/ajax_create_line").as("create_line");
+        cy.route("POST", "/quote/*/create_line").as("add_button_create_line");
         cy.route("GET", "/quote/*/get_ecos_for_quote").as("ecos");
         cy.route("GET", "/quote/*/line/*").as("lineUpdate");
-        cy.visit("/quote/list");
-        cy.get(".button")
-            .contains("Create")
-            .then(($button) => {
-                cy.wrap($button).click();
-            });
-        cy.get(".edit-header-button").click();
-        cy.get("#customer_search").focus().type(" ");
-        cy.get(".ui-menu-item", {
-            timeout: 10000,
-        })
-            .contains("ABC Inc.")
-            .click();
-        cy.get("#custponum").type(gen.info(6));
-        cy.get("#shipto_update_container").should("be.visible");
-        drop_ship ? cy.get('select[name="order_type"]').select('D'): cy.log('No Drop Ship');
-        cy.get("#update_header_button").click();
+        cy.route("GET", "/part/search?by=term&term=*").as("part_lookup");
+        if(internal){
+            cy.visit("/quote/create_internal");
+        }else{
+            cy.visit("/quote/list");
+            cy.get(".button").contains("Create").then(($button) => {
+                    cy.wrap($button).click();
+                });
+            cy.get(".edit-header-button").click();
+            cy.get("#customer_search").focus().type(" ");
+            cy.get(".ui-menu-item", {timeout: 10000,}).contains("ABC Inc.").click();
+            cy.get("#custponum").type(gen.info(6));
+            cy.get("#header_shipvia").select(["Fedex Ground"]);
+            cy.get("#shipto_update_container").should("be.visible");
+            drop_ship ? cy.get('select[name="order_type"]').select('D') : cy.log('No Drop Ship');
+            cy.get("#update_header_button").click();
+        }
         lines.forEach((line, i) => {
             if (!line.prcpart) line.prcpart = "BOM1";
             if (!line.qty) line.qty = "10";
             if (!line.resale) line.resale = "100";
             if (!line.cost) line.cost = "10";
             if (!line.transcode) line.transcode = "SA";
-            ;
             if (
                 line.transcode.toUpperCase() == "CHARGE" ||
                 line.transcode.toUpperCase() == "NN"
@@ -268,47 +275,56 @@ class Quotes {
             } else {
                 line.transcode = "SA";
             }
-    
-            cy.get("#quick_prcpart").type(line.prcpart);
-            cy.get(`#qty_${i + 1}`)
-                .clear()
-                .type(line.qty);
-            cy.wait("@invSearch").its("status").should("be", 200);
-            cy.get(".kinda_show_grid_control").click().wait(1000);
-            cy.get("#web_grid_control_quote-lines > tbody")
-                .find("tr")
-                .contains("Resale")
-                .siblings()
-                .then(($radio) => {
-                    var radio = "input[type='radio']";
-                    cy.wrap($radio).find(radio).first().click();
+            if(!line.use_add_line_button){
+                cy.get("#quick_prcpart").type(line.prcpart);
+                cy.get(`#qty_${i + 1}`).focus().clear().type(line.qty).blur();
+                cy.wait("@invSearch").its("status").should("eq", 200);
+                cy.get(".kinda_show_grid_control").click().wait(1000);
+                cy.get("#web_grid_control_quote-lines > tbody")
+                    .find("tr")
+                    .contains("Resale")
+                    .siblings()
+                    .then(($radio) => {
+                        var radio = "input[type='radio']";
+                        cy.wrap($radio).find(radio).first().click();
+                    });
+                cy.get("#cboxClose").click();
+                cy.get(`#resale_${i + 1}`).clear().type(line.resale);
+                cy.get(`#cost_${i + 1}`).wait(1000).clear().type(line.cost);
+                cy.get("#add_newline").click();
+                cy.wait("@create_line");
+                cy.wait("@lineUpdate").its("status").should("eq", 200);
+                // cy.wait("@getTotal").its("status").should("eq", 200);
+                cy.wait(5000);
+                cy.get("#quote-lines > tbody > tr > td.drag-handle")
+                    .contains(`${i + 1}`)
+                    .parent()
+                    .within(($this) => {
+                        var line_id = $this.attr("line_id");
+                        cy.get(`#buttons_for_${line_id} > .edit-row-buttons-container > .edit-line-button`).scrollIntoView().first().click();
+                    });
+                // cy.get(".edit-row-buttons-container > .edit-line-button").first().click();
+                cy.get(`#transcode-${i + 1}`).select(line.transcode);
+                cy.get(".edit-line-submit").contains("OK").first().click();
+            }else{
+                //using the add line button I believe is quicker but has less options
+                cy.get('#add-line-button').first().click()
+                cy.get('fieldset.quote_line_edit').within($this => {
+                    cy.get('#new_prcpart').first().type(line.prcpart)
                 });
-            cy.get("#cboxClose").click();
-            cy.get(`#resale_${i + 1}`)
-                .clear()
-                .type(line.resale);
-            cy.get(`#cost_${i + 1}`)
-                .wait(1000)
-                .clear()
-                .type(line.cost);
-            cy.get("#add_newline").click();
-            cy.wait("@lineUpdate").its("status").should("be", 200);
-            cy.wait("@getTotal").its("status").should("be", 200);
-            cy.wait(2000);
-            cy.get("#quote-lines > tbody > tr > td.drag-handle")
-                .contains(`${i + 1}`)
-                .parent()
-                .within(($this) => {
-                    var line_id = $this.attr("line_id");
-                    cy.get(
-                        `#buttons_for_${line_id} > .edit-row-buttons-container > .edit-line-button`
-                    )
-                        .first()
-                        .click();
+                //so this is in a javascript tag
+                nav.get_dropdown(line.prcpart)
+                //that is outside of the scope of the fieldset
+                //so you can't look for it while inside of the within loop
+                cy.get('fieldset.quote_line_edit').within($this => {
+                    cy.wait('@invSearch').its('status').should('eq', 200)
+                    cy.get('#new_qty').first().clear().type(line.qty)
+                    cy.get('#new_cost').first().clear().type(line.cost)
+                    cy.get('#new_resale').first().clear().type(line.resale)
+                    cy.get('#new_transcode_').first().select(line.transcode)
+                    cy.get('.button2').first().click()
                 });
-            // cy.get(".edit-row-buttons-container > .edit-line-button").first().click();
-            cy.get(`#transcode-${i + 1}`).select(line.transcode);
-            cy.get(".edit-line-submit").contains("OK").first().click();
+            }
         });
         cy.get(".vertical_nav_notab").find("a").contains("Commit").click();
         cy.wait("@ecos");
@@ -316,6 +332,30 @@ class Quotes {
         if(drop_ship){
             cy.get('.internal_vendor_search').type('More')
             nav.get_dropdown('More')
+        }
+        var alert_string = 'One or more BOM Worksheets are still loading. Please wait, reload this screen, and try again';
+        const quote_err_handling = () => {
+            assert.exists('#order_alerts_and_extras').then(res => {
+                if(res == true){
+                    assert.text_exists('#order_alerts_and_extras', alert_string).then((res2) => {
+                        if(res2 == true){
+                            cy.reload();
+                            quote_err_handling();
+                        }
+                    });
+                }
+            })
+        }
+        //litte recursive action here
+        quote_err_handling();
+        if(build_or_buy.toUpperCase() == "YES"){
+            cy.get('.build_or_buy').each(one => {
+                cy.wrap(one).select(['Yes'])
+            });
+        }else if (build_or_buy.toUpperCase() == "WITH TOP"){
+            cy.get('.build_or_buy').each(one => {
+                cy.wrap(one).select(['With Top'])
+            });
         }
         cy.get("#place-order-button").click();
         cy.get(".status_message").contains("Created Order");

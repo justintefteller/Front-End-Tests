@@ -1,4 +1,44 @@
+import Navigation from "../utils/navigation"
+var nav = new Navigation();
 class Part {
+
+    check_initial_data_exists() {
+        var parts = ["CMP1", "CMP2", "CMP3", "CMP4", "CMPSerial1", "SER1"];
+        cy.wrap(this.create_prc).as('create_prc');
+        cy.wrap(this.create_prcpart).as('create_prcpart');
+
+        cy.wrap(parts).each(function(part) {
+            cy.request({
+                method: "GET",
+                url: "/api/part/" + part +"?preshared_token=cypress_api_hack",
+                failOnStatusCode: false
+            }).then(function(res){
+                var status = res.status
+               cy.wrap(status).as('status')
+            }).then(function(){
+                if(this.status != 200){
+                    var prc = part.substring(0, 3);
+                    var non_inventory = 0;
+                    this.create_prc(prc);
+                    if(part == "SER1"){
+                        non_inventory = 1;
+                    }
+                    this.create_prcpart(part, '', non_inventory);
+                }
+            });
+        });
+    }
+
+    create_initial_data = () => {
+        var prcs = ["CMP", "SER", "TLA"];
+        cy.wrap(prcs).each((prc) => {
+            cy.create_prc(prc);
+        });
+        var parts = ["CMP1", "CMP2", "CMP3", "CMP4", "CMPSerial1"];
+        cy.wrap(parts).each((prcpart) => {
+            cy.create_prcpart(prcpart);
+        });
+    }
     
     create_prc = (prc) => {
         if (!prc) {
@@ -73,25 +113,14 @@ class Part {
                 bom_flag ? cy.get("#create_as_bom").click() : cy.log("skipped");
                 cy.get("table > tbody > tr > td > #create_part").click();
                 if (noninventory) {
-                    cy.side_menu("Edit");
+                    nav.side_menu("Edit");
                     cy.get('input[name="non_inventory"]').check();
-                    cy.get("#update_profile").click();
+                    cy.get("[data-cy=update_profile]").click();
                 }
             }
         });
     };
-
-    create_initial_data = () => {
-        var prcs = ["CMP", "SER", "TLA"];
-        cy.wrap(prcs).each((prc) => {
-            this.create_prc(prc);
-        });
-        var parts = ["CMP1", "CMP2", "CMP3", "CMP4", "CMPSerial1"];
-        cy.wrap(parts).each((prcpart) => {
-            this.create_prcpart(prcpart);
-        });
-    }
-
+    
     goto_prcpart = (prcpart) => {
         cy.get(
             ".nav-wrapper > #main_nav > .special_items > #global_search_container > #global_search"
@@ -126,6 +155,7 @@ class Part {
         cy.get("table > tbody > tr > td > #prcpart").type(prcpart);
         cy.get("tbody > tr > #cost_cell > #cost_info > #cost").type(cost);
         cy.get("table > tbody > tr > td > #quantity").type(qty);
+        cy.get("#qty_accepted").type(qty);
         cy.get("table > tbody > .inspection > td > #receive_and_clear").click();
     };
    
@@ -151,6 +181,14 @@ class Part {
             });
         });
     };
+    create_prcpart_with_api = (token, prcpart, desc) => {
+        var enc_prcpart = encodeURIComponent(prcpart)
+        var enc_desc    = encodeURIComponent(desc)
+        cy.request({
+            method: 'PUT',
+            url: `/api/part?preshared_token=${token}&prcpart=${enc_prcpart}&description=${enc_desc}`,
+        });
+    }
 }
 
 export default Part;
